@@ -90,3 +90,26 @@ export const getOrder = (orderId: string) =>
 
 export const cancelOrder = (orderId: string) =>
   apiRequest<{ order: Order }>(`/customer/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST' }).then((r) => r.order);
+
+export interface Tracking {
+  /** True only while a driver is on the job and a position is known. */
+  available: boolean;
+  /** pending | assigned | accepted | picked_up | delivered | cancelled (customer-facing; "pending" also covers declined offers). */
+  status: string;
+  location?: { latitude: number; longitude: number; capturedAt: string; fresh: boolean };
+  destination?: { latitude: number; longitude: number };
+  updatedAt: string;
+}
+
+export const getTracking = (orderId: string) =>
+  apiRequest<{ tracking: Tracking }>(`/customer/orders/${encodeURIComponent(orderId)}/tracking`).then((r) => r.tracking);
+
+/** The 6-digit code the customer gives the delivery partner. Only available while the order is on its way. */
+export const getDeliveryCode = (orderId: string) =>
+  apiRequest<{ code: string }>(`/customer/orders/${encodeURIComponent(orderId)}/delivery-code`).then((r) => r.code);
+
+export const registerDevice = (input: { deviceId: string; platform: 'ios' | 'android' | 'web'; pushToken: string }) =>
+  apiRequest<unknown>('/customer/notifications/device', { method: 'POST', ...json(input) });
+
+export const unregisterDevice = (deviceId: string) =>
+  apiRequest<void>(`/customer/notifications/device/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });

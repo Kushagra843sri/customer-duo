@@ -6,6 +6,7 @@ import { Avatar, Button, Card, Muted, PressableCard, Screen } from '@/components
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { useCart } from '@/hooks/useCart';
 import { authService } from '@/lib/authService';
+import { unregisterFromPush } from '@/lib/push';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function ProfileScreen() {
         onPress={async () => {
           // A cart belongs to the person who built it.
           clear();
+          await unregisterFromPush();
           await authService.signOut();
         }}
       />

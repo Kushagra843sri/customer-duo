@@ -17,16 +17,34 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "ios": { "bundleIdentifier": "com.duoface.customer" },
-    "web": { "output": "static", "favicon": "./assets/images/favicon.png" },
+    "ios": {
+      "bundleIdentifier": "com.duoface.customer"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
     "plugins": [
       "expo-router",
       [
         "expo-location",
-        { "locationWhenInUsePermission": "Allz Bharat uses your location to fill in your delivery address." }
+        {
+          "locationWhenInUsePermission": "Allz Bharat uses your location to fill in your delivery address."
+        }
       ],
-      ["expo-splash-screen", { "backgroundColor": "#EA580C", "image": "./assets/images/splash-icon.png", "imageWidth": 76 }]
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#EA580C",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76
+        }
+      ]
     ],
-    "experiments": { "typedRoutes": true, "reactCompiler": true }
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
   }
 }

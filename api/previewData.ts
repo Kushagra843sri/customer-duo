@@ -31,6 +31,42 @@ let addresses: Address[] = [
 const orders: Order[] = [];
 let seq = 0;
 
+/** The sample "shop and driver" move an order along by themselves, a step every few seconds. */
+const STEP_MS = 5000;
+const FLOW = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery'];
+const DESTINATION = { latitude: 28.6139, longitude: 77.209 };
+const SHOP_POINT = { latitude: 28.6, longitude: 77.18 };
+
+function advance(order: Order): Order {
+  if (['delivered', 'cancelled', 'rejected'].includes(order.status) || !order.createdAt) return order;
+  const steps = Math.min(FLOW.length - 1, Math.floor((Date.now() - new Date(order.createdAt).getTime()) / STEP_MS));
+  order.status = FLOW[steps];
+  return order;
+}
+
+function previewTracking(order: Order) {
+  const now = new Date().toISOString();
+  const base = { destination: DESTINATION, updatedAt: now };
+  switch (order.status) {
+    case 'ready_for_pickup':
+      return { ...base, available: true, status: 'accepted', location: { ...SHOP_POINT, capturedAt: now, fresh: true } };
+    case 'out_for_delivery': {
+      const t = Math.min(1, (Date.now() - new Date(order.createdAt ?? now).getTime() - 4 * STEP_MS) / (6 * STEP_MS));
+      const location = {
+        latitude: SHOP_POINT.latitude + (DESTINATION.latitude - SHOP_POINT.latitude) * t,
+        longitude: SHOP_POINT.longitude + (DESTINATION.longitude - SHOP_POINT.longitude) * t,
+        capturedAt: now,
+        fresh: true,
+      };
+      return { ...base, available: true, status: 'picked_up', location };
+    }
+    case 'preparing':
+      return { ...base, available: false, status: 'assigned' };
+    default:
+      return { updatedAt: now, available: false, status: 'pending' };
+  }
+}
+
 function parse(init: RequestInit): Record<string, unknown> {
   try {
     return init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
@@ -85,12 +121,26 @@ function route(path: string, method: string, body: Record<string, unknown>): unk
   }
 
   if (path === '/customer/orders' && method === 'POST') return { order: placePreviewOrder(body) };
-  if (path === '/customer/orders' && method === 'GET') return { orders: [...orders].reverse() };
+  if (path === '/customer/orders' && method === 'GET') return { orders: [...orders].reverse().map(advance) };
+  const trk = path.match(/^\/customer\/orders\/([^/]+)\/tracking$/);
+  if (trk) {
+    const o = orders.find((x) => x.orderId === decodeURIComponent(trk[1]));
+    if (!o) throw new ApiError(404, 'Order not found');
+    return { tracking: previewTracking(advance(o)) };
+  }
+  const code = path.match(/^\/customer\/orders\/([^/]+)\/delivery-code$/);
+  if (code) {
+    const o = orders.find((x) => x.orderId === decodeURIComponent(code[1]));
+    if (!o) throw new ApiError(404, 'Order not found');
+    if (advance(o).status !== 'out_for_delivery') throw new ApiError(409, 'The delivery code is available once your order is on its way.');
+    return { code: '482913' };
+  }
+  if (path.startsWith('/customer/notifications/')) return null;
   const cancel = path.match(/^\/customer\/orders\/([^/]+)\/cancel$/);
   if (cancel) {
     const o = orders.find((x) => x.orderId === decodeURIComponent(cancel[1]));
     if (!o) throw new ApiError(404, 'Order not found');
-    if (o.status !== 'pending') throw new ApiError(409, 'This order can no longer be cancelled');
+    if (advance(o).status !== 'pending') throw new ApiError(409, 'This order can no longer be cancelled');
     o.status = 'cancelled';
     return { order: o };
   }
@@ -98,7 +148,7 @@ function route(path: string, method: string, body: Record<string, unknown>): unk
   if (one) {
     const o = orders.find((x) => x.orderId === decodeURIComponent(one[1]));
     if (!o) throw new ApiError(404, 'Order not found');
-    return { order: o };
+    return { order: advance(o) };
   }
 
   throw new ApiError(404, `No preview data for ${method} ${path}`);

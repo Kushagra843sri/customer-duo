@@ -1,6 +1,7 @@
 import '../global.css';
 
 import { Stack, ThemeProvider } from 'expo-router';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +13,7 @@ import { useHeaderOptions, useNavTheme } from '@/constants/navigation';
 import { CartProvider } from '@/hooks/useCart';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { isPreview } from '@/lib/preview';
+import { registerForPush } from '@/lib/push';
 
 /** Dev-only pill under the status bar. */
 function PreviewBanner() {
@@ -28,6 +30,11 @@ function PreviewBanner() {
 function Routes() {
   const { user, isInitializing } = useAuthUser();
   const header = useHeaderOptions();
+
+  const signedIn = !!user;
+  useEffect(() => {
+    if (signedIn) void registerForPush();
+  }, [signedIn]);
 
   if (isInitializing) return <LoadingState />;
 

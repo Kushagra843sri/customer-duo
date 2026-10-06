@@ -7,6 +7,7 @@ import { ApiError } from '@/api/client';
 import { cancelOrder, getOrder } from '@/api/customer';
 import type { Order } from '@/api/customer';
 import { ErrorState } from '@/components/ErrorState';
+import { OrderLiveSection } from '@/components/OrderLiveSection';
 import { LoadingState } from '@/components/LoadingState';
 import { Button, Divider, InfoRow, Muted, Screen, SectionCard, StatusBadge, VerticalSteps } from '@/components/ui';
 import { useApiResource } from '@/hooks/useApiResource';
@@ -104,6 +105,8 @@ export default function OrderScreen() {
           <Muted>{order.status === 'rejected' ? 'The shop could not take this order.' : 'This order was cancelled.'}</Muted>
         </SectionCard>
       )}
+
+      <OrderLiveSection orderId={order.orderId} status={order.status} />
 
       <SectionCard title="Items" icon={Receipt}>
         {order.items.map((i) => (
