@@ -15,7 +15,7 @@ export default function CartScreen() {
   if (cart.lines.length === 0 || !cart.shopId) {
     return (
       <EmptyState title="Your cart is empty" description="Add something from a shop to get started." icon={ShoppingCart}>
-        <Button label="Browse shops" small onPress={() => router.replace('/')} />
+        <Button label="Browse shops" onPress={() => router.replace('/')} />
       </EmptyState>
     );
   }
