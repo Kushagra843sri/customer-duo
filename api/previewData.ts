@@ -39,6 +39,29 @@ const SHOP_POINT = { latitude: 28.6, longitude: 77.18 };
 
 /** Online orders the sample customer has "paid" for, and when (the sample shop only sees an order after it is paid). */
 const paidAt = new Map<string, number>();
+
+/** Sample inbox: items appear as the sample order moves along (same wording as the server). */
+interface PreviewNote {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  orderId: string | null;
+  createdAt: string;
+  read: boolean;
+}
+const NOTE_COPY: Record<string, { title: string; body: string }> = {
+  payment_confirmed: { title: 'Payment received', body: 'Your payment was successful. The shop will start on your order.' },
+  order_confirmed: { title: 'Order confirmed', body: 'The shop accepted your order.' },
+  driver_picked_up: { title: 'Order picked up', body: 'Your order is on its way.' },
+  driver_nearby: { title: 'Your delivery partner is nearby', body: 'Get your delivery code ready: your order will arrive shortly.' },
+};
+const inbox: PreviewNote[] = [];
+function notifyOnce(type: keyof typeof NOTE_COPY, orderId: string) {
+  const id = `${type}:${orderId}`;
+  if (inbox.some((n) => n.id === id)) return;
+  inbox.unshift({ id, type, ...NOTE_COPY[type], orderId, createdAt: new Date().toISOString(), read: false });
+}
 const paying = new Set<string>();
 
 const startedAt = (order: Order) => paidAt.get(order.orderId) ?? new Date(order.createdAt ?? Date.now()).getTime();
@@ -48,6 +71,11 @@ function advance(order: Order): Order {
   if (order.paymentStatus === 'awaiting_payment') return order;
   const steps = Math.min(FLOW.length - 1, Math.floor((Date.now() - startedAt(order)) / STEP_MS));
   order.status = FLOW[steps];
+  if (steps >= FLOW.indexOf('confirmed')) notifyOnce('order_confirmed', order.orderId);
+  if (order.status === 'out_for_delivery') {
+    notifyOnce('driver_picked_up', order.orderId);
+    if (Date.now() - startedAt(order) >= 9 * STEP_MS) notifyOnce('driver_nearby', order.orderId);
+  }
   return order;
 }
 
@@ -143,7 +171,22 @@ function route(path: string, method: string, body: Record<string, unknown>): unk
     if (advance(o).status !== 'out_for_delivery') throw new ApiError(409, 'The delivery code is available once your order is on its way.');
     return { code: '482913' };
   }
-  if (path.startsWith('/customer/notifications/')) return null;
+  if (path === '/notifications' && method === 'GET') {
+    return { notifications: inbox, unread: inbox.filter((n) => !n.read).length };
+  }
+  if (path === '/notifications/read-all') {
+    const marked = inbox.filter((n) => !n.read).length;
+    inbox.forEach((n) => (n.read = true));
+    return { marked };
+  }
+  const readOne = path.match(/^\/notifications\/([^/]+)\/read$/);
+  if (readOne) {
+    const n = inbox.find((x) => x.id === decodeURIComponent(readOne[1]));
+    if (!n) throw new ApiError(404, 'Notification not found.');
+    n.read = true;
+    return null;
+  }
+  if (path.startsWith('/notifications/device')) return null;
   const pay = path.match(/^\/customer\/orders\/([^/]+)\/payment(\/verify)?$/);
   if (pay) {
     const o = orders.find((x) => x.orderId === decodeURIComponent(pay[1]));
@@ -155,6 +198,7 @@ function route(path: string, method: string, body: Record<string, unknown>): unk
         o.paymentStatus = 'paid';
         o.paymentExpiresAt = null;
         paidAt.set(o.orderId, Date.now());
+        notifyOnce('payment_confirmed', o.orderId);
       }
       return { order: advance(o) };
     }

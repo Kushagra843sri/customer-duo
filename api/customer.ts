@@ -114,10 +114,10 @@ export const getDeliveryCode = (orderId: string) =>
   apiRequest<{ code: string }>(`/customer/orders/${encodeURIComponent(orderId)}/delivery-code`).then((r) => r.code);
 
 export const registerDevice = (input: { deviceId: string; platform: 'ios' | 'android' | 'web'; pushToken: string }) =>
-  apiRequest<unknown>('/customer/notifications/device', { method: 'POST', ...json(input) });
+  apiRequest<unknown>('/notifications/device', { method: 'POST', ...json(input) });
 
 export const unregisterDevice = (deviceId: string) =>
-  apiRequest<void>(`/customer/notifications/device/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
+  apiRequest<void>(`/notifications/device/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
 
 /** What this server offers. Online payment is off until Cashfree is configured on the server. */
 export const getConfig = () => apiRequest<{ onlinePayment: boolean }>('/customer/config');

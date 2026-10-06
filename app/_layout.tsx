@@ -13,7 +13,7 @@ import { useHeaderOptions, useNavTheme } from '@/constants/navigation';
 import { CartProvider } from '@/hooks/useCart';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { isPreview } from '@/lib/preview';
-import { registerForPush } from '@/lib/push';
+import { registerForPush, usePushTaps } from '@/lib/push';
 
 /** Dev-only pill under the status bar. */
 function PreviewBanner() {
@@ -32,6 +32,7 @@ function Routes() {
   const header = useHeaderOptions();
 
   const signedIn = !!user;
+  usePushTaps(signedIn);
   useEffect(() => {
     if (signedIn) void registerForPush();
   }, [signedIn]);
@@ -49,6 +50,7 @@ function Routes() {
         <Stack.Screen name="cart" options={{ title: 'Your cart' }} />
         <Stack.Screen name="checkout" options={{ title: 'Checkout' }} />
         <Stack.Screen name="order/[orderId]" options={{ title: 'Your order' }} />
+        <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
         <Stack.Screen name="addresses" options={{ title: 'Saved addresses' }} />
         <Stack.Screen name="address-form" options={{ title: 'Address', presentation: 'modal' }} />
       </Stack.Protected>

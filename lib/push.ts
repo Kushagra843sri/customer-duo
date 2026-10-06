@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import { useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
 import { registerDevice, unregisterDevice } from '@/api/customer';
@@ -71,4 +73,25 @@ export async function unregisterFromPush(): Promise<void> {
   } catch {
     // best effort
   }
+}
+
+/**
+ * Opens the order when a push notification is tapped. The notification only
+ * carries a type and an order id (no personal data); the order screen itself
+ * checks the order belongs to the signed-in customer.
+ */
+export function usePushTaps(signedIn: boolean): void {
+  const router = useRouter();
+  useEffect(() => {
+    if (!signedIn || isPreview || Platform.OS !== 'android') return;
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const orderId = response.notification.request.content.data?.orderId;
+      if (typeof orderId === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(orderId)) {
+        router.push({ pathname: '/order/[orderId]', params: { orderId } });
+      } else {
+        router.push('/notifications');
+      }
+    });
+    return () => sub.remove();
+  }, [signedIn, router]);
 }
