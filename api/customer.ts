@@ -50,11 +50,16 @@ export interface Order {
   delivery: { label: string; fullAddress: string; phoneNumber: string };
   pricing: { subtotalPaise: number; deliveryFeePaise: number; platformFeePaise: number; totalPaise: number };
   createdAt: string | null;
+  /** Online orders only: unpaid orders are cancelled (stock released) after this time. */
+  paymentExpiresAt: string | null;
 }
+
+export type PaymentMethod = 'cod' | 'online';
 
 export interface PlaceOrderInput {
   /** One per checkout attempt; a retry with the same id returns the same order instead of a second one. */
   clientRequestId: string;
+  paymentMethod: PaymentMethod;
   shopId: string;
   addressId: string;
   items: { productId: string; quantity: number }[];
@@ -81,7 +86,7 @@ export const deleteAddress = (addressId: string) =>
   apiRequest<void>(`/customer/addresses/${encodeURIComponent(addressId)}`, { method: 'DELETE' });
 
 export const placeOrder = (input: PlaceOrderInput) =>
-  apiRequest<{ order: Order }>('/customer/orders', { method: 'POST', ...json({ ...input, paymentMethod: 'cod' }) }).then((r) => r.order);
+  apiRequest<{ order: Order }>('/customer/orders', { method: 'POST', ...json(input) }).then((r) => r.order);
 
 export const listOrders = () => apiRequest<{ orders: Order[] }>('/customer/orders').then((r) => r.orders);
 
@@ -113,3 +118,14 @@ export const registerDevice = (input: { deviceId: string; platform: 'ios' | 'and
 
 export const unregisterDevice = (deviceId: string) =>
   apiRequest<void>(`/customer/notifications/device/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
+
+/** What this server offers. Online payment is off until Cashfree is configured on the server. */
+export const getConfig = () => apiRequest<{ onlinePayment: boolean }>('/customer/config');
+
+/** Where the customer pays for an online order. Safe to call again for the same order. */
+export const startPayment = (orderId: string) =>
+  apiRequest<{ checkoutUrl: string }>(`/customer/orders/${encodeURIComponent(orderId)}/payment`, { method: 'POST' }).then((r) => r.checkoutUrl);
+
+/** Asks the server to check with the payment provider; the app never decides that an order is paid. */
+export const verifyPayment = (orderId: string) =>
+  apiRequest<{ order: Order }>(`/customer/orders/${encodeURIComponent(orderId)}/payment/verify`, { method: 'POST' }).then((r) => r.order);

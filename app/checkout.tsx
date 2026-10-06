@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
-import { Banknote, CircleCheck, MapPin, Plus } from 'lucide-react-native';
+import { Banknote, CircleCheck, CreditCard, MapPin, Plus } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { ApiError, NetworkError } from '@/api/client';
-import { listAddresses, placeOrder } from '@/api/customer';
+import { getConfig, listAddresses, placeOrder } from '@/api/customer';
+import type { PaymentMethod } from '@/api/customer';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
@@ -13,6 +14,7 @@ import { useApiResource } from '@/hooks/useApiResource';
 import { useCart } from '@/hooks/useCart';
 import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { formatPaise } from '@/lib/money';
+import { openPayment } from '@/lib/payment';
 
 function newRequestId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
@@ -32,6 +34,9 @@ export default function CheckoutScreen() {
   const soft = useAccentSoft();
   const { cart, itemCount, subtotalPaise, clear } = useCart();
   const addresses = useApiResource(listAddresses);
+  // Online payment is only offered when the server has it set up. If this call fails we just offer cash on delivery.
+  const config = useApiResource(() => getConfig().catch(() => ({ onlinePayment: false })));
+  const [method, setMethod] = useState<PaymentMethod>('cod');
   useRefetchOnFocus(addresses.retry);
 
   const [chosen, setChosen] = useState<string | null>(null);
@@ -40,11 +45,13 @@ export default function CheckoutScreen() {
   const placingRef = useRef(false);
   // One id per distinct cart+address: a retry after a network drop returns the same order, never a second one.
   const attempt = useRef<{ signature: string; id: string } | null>(null);
+  const onlineAvailable = config.data?.onlinePayment === true;
+  const payMethod: PaymentMethod = onlineAvailable ? method : 'cod';
 
   if (cart.lines.length === 0 || !cart.shopId) {
     return <EmptyState title="Your cart is empty" description="Add something from a shop first." icon={Banknote} />;
   }
-  if (addresses.isLoading && !addresses.data) return <LoadingState />;
+  if ((addresses.isLoading && !addresses.data) || (config.isLoading && !config.data)) return <LoadingState />;
   if (addresses.error && !addresses.data) return <ErrorState error={addresses.error} retry={addresses.retry} />;
 
   const list = addresses.data ?? [];
@@ -58,12 +65,21 @@ export default function CheckoutScreen() {
     setError(null);
 
     const items = cart.lines.map((l) => ({ productId: l.productId, quantity: l.quantity }));
-    const signature = JSON.stringify([shopId, selected.addressId, items]);
+    const signature = JSON.stringify([shopId, selected.addressId, items, payMethod]);
     if (attempt.current?.signature !== signature) attempt.current = { signature, id: newRequestId() };
 
     try {
-      const order = await placeOrder({ clientRequestId: attempt.current.id, shopId, addressId: selected.addressId, items });
+      const order = await placeOrder({ clientRequestId: attempt.current.id, paymentMethod: payMethod, shopId, addressId: selected.addressId, items });
       clear();
+      if (payMethod === 'online') {
+        // The order exists (items are held for a few minutes). If the payment page can't open, the order
+        // screen has a "Pay" button, so this is never a dead end.
+        try {
+          await openPayment(order.orderId);
+        } catch {
+          // handled on the order screen
+        }
+      }
       router.replace({ pathname: '/order/[orderId]', params: { orderId: order.orderId } });
     } catch (err) {
       setError(describePlaceError(err));
@@ -82,7 +98,12 @@ export default function CheckoutScreen() {
             <Text className="text-base font-semibold text-ink dark:text-ink-dark">Total to pay</Text>
             <Text className="text-xl font-extrabold text-ink dark:text-ink-dark">{formatPaise(subtotalPaise)}</Text>
           </View>
-          <Button label="Place order" loading={placing} disabled={!selected} onPress={submit} />
+          <Button
+            label={payMethod === 'online' ? `Pay ${formatPaise(subtotalPaise)} online` : 'Place order'}
+            loading={placing}
+            disabled={!selected}
+            onPress={submit}
+          />
         </>
       }
     >
@@ -118,12 +139,30 @@ export default function CheckoutScreen() {
       </SectionCard>
 
       <SectionCard title="Payment">
-        <View className="flex-row items-center gap-3">
-          <IconChip icon={Banknote} />
-          <View className="flex-1">
-            <Text className="text-sm font-bold text-ink dark:text-ink-dark">Cash on delivery</Text>
-            <Muted>Pay the delivery partner when your order arrives.</Muted>
-          </View>
+        <View className="gap-2">
+          {(
+            [
+              { value: 'cod', icon: Banknote, title: 'Cash on delivery', sub: 'Pay the delivery partner when your order arrives.' },
+              ...(onlineAvailable ? [{ value: 'online', icon: CreditCard, title: 'Pay online', sub: 'UPI, cards or net banking. Secure payment by Cashfree.' }] : []),
+            ] as { value: PaymentMethod; icon: typeof Banknote; title: string; sub: string }[]
+          ).map((option) => {
+            const isSelected = payMethod === option.value;
+            return (
+              <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ selected: isSelected }} onPress={() => setMethod(option.value)}>
+                <View
+                  style={isSelected ? { borderColor: soft.fg } : undefined}
+                  className="flex-row items-center gap-3 rounded-2xl border border-line p-3 dark:border-line-dark"
+                >
+                  <IconChip icon={option.icon} />
+                  <View className="flex-1">
+                    <Text className="text-sm font-bold text-ink dark:text-ink-dark">{option.title}</Text>
+                    <Muted>{option.sub}</Muted>
+                  </View>
+                  {isSelected ? <CircleCheck size={22} color={soft.fg} /> : null}
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
       </SectionCard>
 

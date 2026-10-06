@@ -17,9 +17,28 @@ export function formatOrderStatus(status: string): string {
 /** Statuses after which nothing more will happen. */
 export const FINAL_ORDER_STATUSES = ['delivered', 'cancelled', 'rejected'];
 
-/** The customer can cancel only before the shop accepts. */
-export function canCancel(status: string): boolean {
-  return status === 'pending';
+/** The customer can cancel only before the shop accepts, and not once an online order is paid (refunds are handled by support). */
+export function canCancel(order: { status: string; paymentMethod: string; paymentStatus: string }): boolean {
+  return order.status === 'pending' && !(order.paymentMethod === 'online' && order.paymentStatus === 'paid');
+}
+
+/** Online order created but not paid yet: the shop has not seen it. */
+export function isAwaitingPayment(order: { paymentStatus: string }): boolean {
+  return order.paymentStatus === 'awaiting_payment';
+}
+
+export function describePayment(order: { paymentMethod: string; paymentStatus: string }): string {
+  if (order.paymentMethod === 'cod') return 'Cash on delivery';
+  switch (order.paymentStatus) {
+    case 'paid':
+      return 'Paid online';
+    case 'awaiting_payment':
+      return 'Online payment: waiting for your payment';
+    case 'expired':
+      return 'Online payment: not completed in time';
+    default:
+      return 'Online payment';
+  }
 }
 
 /** Happy-path steps shown on the order screen. */

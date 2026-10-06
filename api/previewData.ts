@@ -37,9 +37,16 @@ const FLOW = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_
 const DESTINATION = { latitude: 28.6139, longitude: 77.209 };
 const SHOP_POINT = { latitude: 28.6, longitude: 77.18 };
 
+/** Online orders the sample customer has "paid" for, and when (the sample shop only sees an order after it is paid). */
+const paidAt = new Map<string, number>();
+const paying = new Set<string>();
+
+const startedAt = (order: Order) => paidAt.get(order.orderId) ?? new Date(order.createdAt ?? Date.now()).getTime();
+
 function advance(order: Order): Order {
   if (['delivered', 'cancelled', 'rejected'].includes(order.status) || !order.createdAt) return order;
-  const steps = Math.min(FLOW.length - 1, Math.floor((Date.now() - new Date(order.createdAt).getTime()) / STEP_MS));
+  if (order.paymentStatus === 'awaiting_payment') return order;
+  const steps = Math.min(FLOW.length - 1, Math.floor((Date.now() - startedAt(order)) / STEP_MS));
   order.status = FLOW[steps];
   return order;
 }
@@ -51,7 +58,7 @@ function previewTracking(order: Order) {
     case 'ready_for_pickup':
       return { ...base, available: true, status: 'accepted', location: { ...SHOP_POINT, capturedAt: now, fresh: true } };
     case 'out_for_delivery': {
-      const t = Math.min(1, (Date.now() - new Date(order.createdAt ?? now).getTime() - 4 * STEP_MS) / (6 * STEP_MS));
+      const t = Math.min(1, (Date.now() - startedAt(order) - 4 * STEP_MS) / (6 * STEP_MS));
       const location = {
         latitude: SHOP_POINT.latitude + (DESTINATION.latitude - SHOP_POINT.latitude) * t,
         longitude: SHOP_POINT.longitude + (DESTINATION.longitude - SHOP_POINT.longitude) * t,
@@ -85,6 +92,7 @@ export async function previewRequest<T>(path: string, init: RequestInit): Promis
 
 function route(path: string, method: string, body: Record<string, unknown>): unknown {
   if (path === '/customer/shops') return { shops: SHOPS };
+  if (path === '/customer/config') return { onlinePayment: true };
 
   const products = path.match(/^\/customer\/shops\/([^/]+)\/products$/);
   if (products) {
@@ -136,11 +144,33 @@ function route(path: string, method: string, body: Record<string, unknown>): unk
     return { code: '482913' };
   }
   if (path.startsWith('/customer/notifications/')) return null;
+  const pay = path.match(/^\/customer\/orders\/([^/]+)\/payment(\/verify)?$/);
+  if (pay) {
+    const o = orders.find((x) => x.orderId === decodeURIComponent(pay[1]));
+    if (!o) throw new ApiError(404, 'Order not found');
+    if (o.paymentMethod !== 'online') throw new ApiError(409, 'This is not an online-payment order.');
+    if (pay[2]) {
+      // verify: the sample provider reports "paid" once the customer has been through the payment page
+      if (o.paymentStatus === 'awaiting_payment' && paying.has(o.orderId)) {
+        o.paymentStatus = 'paid';
+        o.paymentExpiresAt = null;
+        paidAt.set(o.orderId, Date.now());
+      }
+      return { order: advance(o) };
+    }
+    if (o.paymentStatus !== 'awaiting_payment') throw new ApiError(409, 'This order is no longer waiting for payment.');
+    paying.add(o.orderId);
+    return { checkoutUrl: 'https://preview.invalid/pay' };
+  }
   const cancel = path.match(/^\/customer\/orders\/([^/]+)\/cancel$/);
   if (cancel) {
     const o = orders.find((x) => x.orderId === decodeURIComponent(cancel[1]));
     if (!o) throw new ApiError(404, 'Order not found');
     if (advance(o).status !== 'pending') throw new ApiError(409, 'This order can no longer be cancelled');
+    if (o.paymentMethod === 'online' && o.paymentStatus === 'paid') {
+      throw new ApiError(409, 'This order is already paid, so it cannot be cancelled in the app. Please contact support.');
+    }
+    if (o.paymentStatus === 'awaiting_payment') o.paymentStatus = 'cancelled';
     o.status = 'cancelled';
     return { order: o };
   }
@@ -156,6 +186,7 @@ function route(path: string, method: string, body: Record<string, unknown>): unk
 
 function placePreviewOrder(body: Record<string, unknown>): Order {
   const requestId = String(body.clientRequestId);
+  const online = body.paymentMethod === 'online';
   const existing = orders.find((o) => o.orderId === `ord_${requestId}`);
   if (existing) return existing;
 
@@ -180,8 +211,9 @@ function placePreviewOrder(body: Record<string, unknown>): Order {
     shopId: shop.shopId,
     shopName: shop.name,
     status: 'pending',
-    paymentMethod: 'cod',
-    paymentStatus: 'pending',
+    paymentMethod: online ? 'online' : 'cod',
+    paymentStatus: online ? 'awaiting_payment' : 'pending',
+    paymentExpiresAt: online ? new Date(Date.now() + 15 * 60_000).toISOString() : null,
     items: items.map(({ p, quantity }) => ({
       productId: p.productId,
       name: p.name,
