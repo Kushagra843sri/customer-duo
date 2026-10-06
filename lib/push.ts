@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
@@ -8,6 +8,26 @@ import { registerDevice, unregisterDevice } from '@/api/customer';
 import { isPreview } from '@/lib/preview';
 
 const DEVICE_ID_KEY = 'customer.deviceId.v1';
+
+type NotificationsModule = typeof import('expo-notifications');
+
+/**
+ * The notifications package is loaded only when push can actually work: an
+ * Android development/production build. In Expo Go (SDK 53+) merely importing
+ * it throws, which used to take the whole app down at start-up, so it is never
+ * imported at the top of the file, and any failure to load it just means "no push"
+ * (the in-app inbox still shows everything).
+ */
+function loadNotifications(): NotificationsModule | null {
+  if (isPreview || Platform.OS !== 'android') return null;
+  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return null; // Expo Go
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-notifications') as NotificationsModule;
+  } catch {
+    return null;
+  }
+}
 
 /** Stable per-install id (the server scopes it to the signed-in uid). */
 async function getDeviceId(): Promise<string> {
@@ -29,7 +49,7 @@ async function getDeviceId(): Promise<string> {
 let handlerInstalled = false;
 
 /** Show notifications that arrive while the app is open, too. */
-function installForegroundHandler() {
+function installForegroundHandler(Notifications: NotificationsModule) {
   if (handlerInstalled) return;
   handlerInstalled = true;
   Notifications.setNotificationHandler({
@@ -45,9 +65,10 @@ function installForegroundHandler() {
  * verified token.
  */
 export async function registerForPush(): Promise<void> {
-  if (isPreview || Platform.OS !== 'android') return;
+  const Notifications = loadNotifications();
+  if (!Notifications) return;
   try {
-    installForegroundHandler();
+    installForegroundHandler(Notifications);
     await Notifications.setNotificationChannelAsync('default', {
       name: 'Order updates',
       importance: Notifications.AndroidImportance.DEFAULT,
@@ -83,7 +104,8 @@ export async function unregisterFromPush(): Promise<void> {
 export function usePushTaps(signedIn: boolean): void {
   const router = useRouter();
   useEffect(() => {
-    if (!signedIn || isPreview || Platform.OS !== 'android') return;
+    const Notifications = signedIn ? loadNotifications() : null;
+    if (!Notifications) return;
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const orderId = response.notification.request.content.data?.orderId;
       if (typeof orderId === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(orderId)) {
