@@ -2,13 +2,14 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { PackageOpen } from 'lucide-react-native';
 import { FlatList, RefreshControl, Text, View } from 'react-native';
 
-import { listProducts } from '@/api/customer';
+import { listProducts, listShops } from '@/api/customer';
 import type { Product } from '@/api/customer';
 import { CartBar } from '@/components/CartBar';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
 import { QuantityStepper } from '@/components/QuantityStepper';
+import { ShopPhotos } from '@/components/ShopPhotos';
 import { Canvas, Card, Muted } from '@/components/ui';
 import { useApiResource } from '@/hooks/useApiResource';
 import { useCart } from '@/hooks/useCart';
@@ -20,6 +21,9 @@ export default function ShopScreen() {
   const { shopId, name } = useLocalSearchParams<{ shopId: string; name?: string }>();
   const cart = useCart();
   const { data, isLoading, error, retry } = useApiResource(() => listProducts(shopId), [shopId]);
+  // Photos are decoration: if this call fails the shop page still works without them.
+  const { data: shops } = useApiResource(listShops);
+  const images = shops?.find((s) => s.shopId === shopId)?.images ?? [];
 
   // The shop's name comes from the cart when it is this shop's, otherwise from the route.
   const shopName = cart.cart.shopId === shopId ? cart.cart.shopName : (name ?? 'Shop');
@@ -46,11 +50,15 @@ export default function ShopScreen() {
     <Canvas>
       <Stack.Screen options={{ title: shopName }} />
       {!data || data.length === 0 ? (
-        <EmptyState title="Nothing available right now" description="This shop has no items in stock. Check back soon." icon={PackageOpen} />
+        <>
+          {images.length > 0 ? <ShopPhotos images={images} shopName={shopName} mode="gallery" /> : null}
+          <EmptyState title="Nothing available right now" description="This shop has no items in stock. Check back soon." icon={PackageOpen} />
+        </>
       ) : (
         <FlatList
           data={data}
           keyExtractor={(p) => p.productId}
+          ListHeaderComponent={images.length > 0 ? <View className="-mx-4 -mt-4 mb-1"><ShopPhotos images={images} shopName={shopName} mode="gallery" /></View> : null}
           contentContainerClassName="gap-3 p-4"
           refreshControl={<RefreshControl refreshing={isLoading} onRefresh={retry} />}
           renderItem={({ item }) => {

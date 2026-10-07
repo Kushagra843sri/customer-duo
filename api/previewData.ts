@@ -8,9 +8,9 @@ import type { Address, Order, Product, Shop } from '@/api/customer';
  * idempotent order ids, cancel only while pending) but is NOT the server.
  */
 const SHOPS: Shop[] = [
-  { shopId: 's1', name: 'Sharma Kirana Store', address: 'MG Road, Sector 14', imageUrl: null, rating: 4.6, isOpen: true },
-  { shopId: 's2', name: 'Fresh Basket', address: 'Park Street', imageUrl: null, rating: 4.2, isOpen: true },
-  { shopId: 's3', name: 'Night Owl Mart', address: 'Station Road', imageUrl: null, rating: null, isOpen: false },
+  { shopId: 's1', name: 'Sharma Kirana Store', address: 'MG Road, Sector 14', imageUrl: null, images: ['https://picsum.photos/seed/kirana1/800/450', 'https://picsum.photos/seed/kirana2/800/450', 'https://picsum.photos/seed/kirana3/800/450'], rating: 4.6, isOpen: true },
+  { shopId: 's2', name: 'Fresh Basket', address: 'Park Street', imageUrl: null, images: ['https://picsum.photos/seed/basket1/800/450'], rating: 4.2, isOpen: true },
+  { shopId: 's3', name: 'Night Owl Mart', address: 'Station Road', imageUrl: null, images: [], rating: null, isOpen: false },
 ];
 
 const stock: Record<string, Product[]> = {

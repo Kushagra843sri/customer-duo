@@ -7,6 +7,8 @@ export interface Shop {
   name: string;
   address: string;
   imageUrl: string | null;
+  /** Storefront photos the shop owner uploaded (up to 4, first = cover). */
+  images: string[];
   rating: number | null;
   isOpen: boolean;
 }
