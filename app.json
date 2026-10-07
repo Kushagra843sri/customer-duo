@@ -8,7 +8,8 @@
     "scheme": "allzbharat",
     "userInterfaceStyle": "automatic",
     "android": {
-      "package": "com.duoface.customer",
+      "package": "com.allzbharat.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#FFF1E6",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
